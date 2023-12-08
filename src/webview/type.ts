@@ -8,12 +8,23 @@ export interface Context {
   conversation_id?: string;
 }
 
+export interface WebviewAsset {
+  asset_id: string;
+  balance: string;
+  chain_id: string;
+  icon_url: string;
+  name: string;
+  symbol: string;
+}
+
 export interface Messengers {
   getContext: (args?: string) => string;
   playlist: (audio: string[]) => any;
   reloadTheme: (args?: string) => void;
   close: (args?: string) => void;
   getAssets: (assets: string[], globalCallBackFuncName: string) => void;
+  getTipAddress: (chainId: string, globalCallBackFuncName: string) => void;
+  tipSign: (chainId: string, message: string, globalCallBackFuncName: string) => void;
 }
 
 declare global {
@@ -24,7 +35,9 @@ declare global {
         playlist?: { postMessage: Messengers['playlist'] };
         reloadTheme?: { postMessage: Messengers['reloadTheme'] };
         close?: { postMessage: Messengers['close'] };
-        getAssets?: { postMessage: ([method, globalCallBackFuncName]: [string[], string]) => void };
+        getAssets?: { postMessage: ([params, globalCallBackFuncName]: [string[], string]) => void };
+        getTipAddress?: { postMessage: ([chainId, globalCallBackFuncName]: [string, string]) => void };
+        tipSign?: { postMessage: ([chainId, message, globalCallBackFuncName]: [string, string, string]) => void };
       };
     };
     MixinContext?: {
@@ -33,7 +46,11 @@ declare global {
       playlist?: Messengers['playlist'];
       close?: Messengers['close'];
       getAssets?: Messengers['getAssets'];
+      getTipAddress?: Messengers['getTipAddress'];
+      tipSign?: Messengers['tipSign'];
     };
-    assetsCallbackFunction?: (res: any[]) => void;
+    assetsCallbackFunction?: (res: WebviewAsset[]) => void;
+    tipAddressCallbackFunction?: (address: string) => void;
+    tipSignCallbackFunction?: (signature: string) => void;
   }
 }
