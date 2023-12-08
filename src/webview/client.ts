@@ -94,7 +94,7 @@ export const WebViewApi = () => {
         case 'Desktop':
           if (window.MixinContext && typeof window.MixinContext.getTipAddress === 'function') {
             window.tipAddressCallbackFunction = cb;
-            await window.MixinContext.getTipAddress(chainId, 'assetsCallbackFunction'); 
+            await window.MixinContext.getTipAddress(chainId, 'tipAddressCallbackFunction'); 
           }
           break;
         default:
@@ -107,14 +107,14 @@ export const WebViewApi = () => {
         case 'iOS':
           if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.tipSign) {
             window.tipSignCallbackFunction = cb;
-            await window.webkit.messageHandlers.tipSign.postMessage([chainId, msg, 'tipAddressCallbackFunction']); 
+            await window.webkit.messageHandlers.tipSign.postMessage([chainId, msg, 'tipSignCallbackFunction']); 
           }
           break;
         case 'Android':
         case 'Desktop':
           if (window.MixinContext && typeof window.MixinContext.tipSign === 'function') {
             window.tipSignCallbackFunction = cb;
-            await window.MixinContext.tipSign(chainId, msg, 'assetsCallbackFunction'); 
+            await window.MixinContext.tipSign(chainId, msg, 'tipSignCallbackFunction'); 
           }
           break;
         default:
