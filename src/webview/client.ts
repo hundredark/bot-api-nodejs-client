@@ -63,13 +63,14 @@ export const WebViewApi = () => {
     },
 
     getAssets: async (assets: string[], cb: (assets: any[]) => void) => {
+      window.assetsCallbackFunction = cb;
       switch (getMixinContext().platform) {
         case 'iOS':
-          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.getAssets) await window.webkit.messageHandlers.getAssets.postMessage([assets, cb]);
+          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.getAssets) await window.webkit.messageHandlers.getAssets.postMessage([assets, 'assetsCallbackFunction']);
           break;
         case 'Android':
         case 'Desktop':
-          if (window.MixinContext && typeof window.MixinContext.getAssets === 'function') await window.MixinContext.getAssets(assets, cb);
+          if (window.MixinContext && typeof window.MixinContext.getAssets === 'function') await window.MixinContext.getAssets(assets, 'assetsCallbackFunction');
           break;
         default:
           break;

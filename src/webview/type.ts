@@ -13,7 +13,7 @@ export interface Messengers {
   playlist: (audio: string[]) => any;
   reloadTheme: (args?: string) => void;
   close: (args?: string) => void;
-  getAssets: (assets: string[], cb: (res: any[]) => void) => void;
+  getAssets: (assets: string[], globalCallBackFuncName: string) => void;
 }
 
 declare global {
@@ -24,7 +24,7 @@ declare global {
         playlist?: { postMessage: Messengers['playlist'] };
         reloadTheme?: { postMessage: Messengers['reloadTheme'] };
         close?: { postMessage: Messengers['close'] };
-        getAssets?: { postMessage: ([method, cb]: [string[], (res: any[]) => void]) => void };
+        getAssets?: { postMessage: ([method, globalCallBackFuncName]: [string[], string]) => void };
       };
     };
     MixinContext?: {
@@ -34,5 +34,6 @@ declare global {
       close?: Messengers['close'];
       getAssets?: Messengers['getAssets'];
     };
+    assetsCallbackFunction?: (res: any[]) => void;
   }
 }
