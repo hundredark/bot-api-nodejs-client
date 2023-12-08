@@ -1,4 +1,4 @@
-import { Context } from './type';
+import type { Context } from './type';
 
 export const WebViewApi = () => {
   const getMixinContext = () => {
@@ -61,5 +61,19 @@ export const WebViewApi = () => {
           break;
       }
     },
-  };
-};
+
+    getAssets: async (assets: string[], cb: (assets: any[]) => void) => {
+      switch (getMixinContext().platform) {
+        case 'iOS':
+          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.getAssets) await window.webkit.messageHandlers.getAssets.postMessage(assets, cb);
+          break;
+        case 'Android':
+        case 'Desktop':
+          if (window.MixinContext && typeof window.MixinContext.getAssets === 'function') await window.MixinContext.getAssets(assets, cb);
+          break;
+        default:
+          break;
+      }
+    }
+  }
+}

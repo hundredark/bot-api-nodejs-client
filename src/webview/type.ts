@@ -13,6 +13,7 @@ export interface Messengers {
   playlist: (audio: string[]) => any;
   reloadTheme: (args?: string) => void;
   close: (args?: string) => void;
+  getAssets: (assets: string[], cb: (res: any[]) => void) => any;
 }
 
 declare global {
@@ -23,6 +24,7 @@ declare global {
         playlist?: { postMessage: Messengers['playlist'] };
         reloadTheme?: { postMessage: Messengers['reloadTheme'] };
         close?: { postMessage: Messengers['close'] };
+        getAssets?: { postMessage: Messengers['getAssets'] };
       };
     };
     MixinContext?: {
@@ -30,6 +32,7 @@ declare global {
       reloadTheme?: Messengers['reloadTheme'];
       playlist?: Messengers['playlist'];
       close?: Messengers['close'];
+      getAssets?: Messengers['getAssets'];
     };
   }
 }
