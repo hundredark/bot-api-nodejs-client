@@ -65,7 +65,7 @@ export const WebViewApi = () => {
     getAssets: async (assets: string[], cb: (assets: any[]) => void) => {
       switch (getMixinContext().platform) {
         case 'iOS':
-          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.getAssets) await window.webkit.messageHandlers.getAssets.postMessage(assets, cb);
+          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.getAssets) await window.webkit.messageHandlers.getAssets.postMessage([assets, cb]);
           break;
         case 'Android':
         case 'Desktop':
