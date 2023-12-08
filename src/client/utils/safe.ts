@@ -42,7 +42,7 @@ export const buildMixinOneSafePaymentUri = (params: PaymentParams) => {
     amount: params.amount,
     memo: params.memo,
     trace: params.trace ?? v4(),
-    return_to: params.returnTo && encodeURIComponent(params.returnTo),
+    return_to: params.returnTo,
   };
   const query = qs.stringify(p);
   return `${baseUrl}?${query}`;
