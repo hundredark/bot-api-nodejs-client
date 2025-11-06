@@ -1,7 +1,7 @@
-import { AxiosInstance } from 'axios';
+import type { AxiosInstance } from 'axios';
 import { v4 as uuid } from 'uuid';
-import Keystore from './types/keystore';
-import {
+import type Keystore from './types/keystore';
+import type {
   AcknowledgementRequest,
   AcknowledgementResponse,
   MessageCategory,
@@ -30,16 +30,18 @@ import { uniqueConversationID, base64RawURLEncode, buildClient } from './utils';
  */
 export const MessageKeystoreClient = (axiosInstance: AxiosInstance, keystore: Keystore | undefined) => {
   const send = (message: MessageRequest) => axiosInstance.post<unknown, any>('/messages', [message]);
+  const sendLegacy = (message: MessageRequest) => axiosInstance.post<unknown, any>('/messages', message);
 
   const sendMsg = async (recipientID: string, category: MessageCategory, data: any): Promise<MessageRequest> => {
+    if (!keystore) throw new Error('No Keystore Provided');
     if (typeof data === 'object') data = JSON.stringify(data);
 
     const messageRequest = {
       category,
       recipient_id: recipientID,
-      conversation_id: uniqueConversationID(keystore!.user_id, recipientID),
+      conversation_id: uniqueConversationID(keystore.app_id, recipientID),
       message_id: uuid(),
-      data: base64RawURLEncode(Buffer.from(data)),
+      data_base64: base64RawURLEncode(Buffer.from(data)),
     };
     await send(messageRequest);
     return messageRequest;
@@ -93,6 +95,8 @@ export const MessageKeystoreClient = (axiosInstance: AxiosInstance, keystore: Ke
     sendTransfer: (userID: string, transfer: TransferMessageRequest): Promise<MessageRequest> => sendMsg(userID, 'SYSTEM_ACCOUNT_SNAPSHOT', transfer),
 
     sendRecall: (userID: string, message: RecallMessageRequest): Promise<MessageRequest> => sendMsg(userID, 'MESSAGE_RECALL', message),
+
+    sendLegacy: (message: MessageRequest) => sendLegacy(message),
   };
 };
 

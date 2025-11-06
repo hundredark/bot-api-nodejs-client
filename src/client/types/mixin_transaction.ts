@@ -30,7 +30,7 @@ export interface Input {
 export interface Output {
   type?: number;
   amount: string;
-  keys?: string[];
+  keys: string[];
   withdrawal?: WithdrawData;
   script?: string;
   mask?: string;
@@ -39,4 +39,22 @@ export interface Output {
 export interface Aggregated {
   signers: number[];
   signature: string;
+}
+
+export interface Transaction {
+  hash?: string;
+  snapshot?: string;
+  signatures?: {
+    [key: number]: string;
+  };
+  aggregated?: {
+    signers: number[];
+    signature: string;
+  };
+
+  version?: number;
+  asset: string;
+  inputs?: Input[];
+  outputs?: Output[];
+  extra: string;
 }

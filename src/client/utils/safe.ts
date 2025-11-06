@@ -1,16 +1,21 @@
-import forge from 'node-forge';
-import qs from 'qs';
 import { validate, v4 } from 'uuid';
-import { FixedNumber } from 'ethers';
-import { GhostKey, GhostKeyRequest, MultisigTransaction, PaymentParams, SafeTransactionRecipient, SafeUtxoOutput } from '../types';
-import { Input, Output } from '../../mvm/types';
-import { Encoder, magic } from '../../mvm';
+import BigNumber from 'bignumber.js';
+import { ed25519 } from '@noble/curves/ed25519';
+import type { Input, Output, GhostKey, PaymentParams, SafeTransaction, SafeTransactionRecipient, SafeUtxoOutput, MixAddress } from '../types';
+import { Encoder, magic } from './encoder';
+import { Decoder } from './decoder';
 import { base64RawURLEncode } from './base64';
 import { TIPBodyForSequencerRegister } from './tip';
-import { getPublicFromMainnetAddress, buildMixAddress, parseMixAddress } from './address';
+import { getPublicFromMainnetAddress, buildMixAddress, parseMixAddress, getMainnetAddressFromSeed, MainAddressPrefix } from './address';
 import { encodeScript } from './multisigs';
 import { blake3Hash, newHash, sha512Hash } from './uniq';
 import { edwards25519 as ed } from './ed25519';
+
+export const ReferencesCountLimit = 16;
+export const ExtraSizeGeneralLimit = 256;
+export const ExtraSizeStorageCapacity = 1024 * 1024 * 4;
+export const ExtraSizeStorageStep = 1024;
+export const ExtraStoragePriceStep = '0.0001';
 
 export const TxVersionHashSignature = 0x05;
 export const OutputTypeScript = 0x00;
@@ -29,11 +34,21 @@ export const buildMixinOneSafePaymentUri = (params: PaymentParams) => {
   if (params.uuid && validate(params.uuid)) address = params.uuid;
   else if (params.mainnetAddress && getPublicFromMainnetAddress(params.mainnetAddress)) address = params.mainnetAddress;
   else if (params.mixAddress && parseMixAddress(params.mixAddress)) address = params.mixAddress;
-  else if (params.members && params.threshold) {
-    address = buildMixAddress({
-      members: params.members,
-      threshold: params.threshold,
-    });
+  else if (params.threshold) {
+    if (params.xinMembers)
+      address = buildMixAddress({
+        version: 2,
+        xinMembers: params.xinMembers,
+        uuidMembers: [],
+        threshold: params.threshold,
+      });
+    if (params.uuidMembers)
+      address = buildMixAddress({
+        version: 2,
+        xinMembers: [],
+        uuidMembers: params.uuidMembers,
+        threshold: params.threshold,
+      });
   } else throw new Error('fail to get payment destination address');
 
   const baseUrl = `https://mixin.one/pay/${address}`;
@@ -42,32 +57,29 @@ export const buildMixinOneSafePaymentUri = (params: PaymentParams) => {
     amount: params.amount,
     memo: params.memo,
     trace: params.trace ?? v4(),
-    return_to: params.returnTo,
+    return_to: params.returnTo && encodeURIComponent(params.returnTo),
   };
-  const query = qs.stringify(p);
+  const query = Object.entries(p)
+    .filter(([key, value]) => key && value)
+    .map(([key, value]) => `${key}=${value}`)
+    .join('&');
   return `${baseUrl}?${query}`;
 };
 
 export const signSafeRegistration = (user_id: string, tipPin: string, privateKey: Buffer) => {
-  const public_key = forge.pki.ed25519.publicKeyFromPrivateKey({ privateKey }).toString('hex');
+  const public_key = Buffer.from(ed25519.getPublicKey(privateKey)).toString('hex');
 
   const hash = newHash(Buffer.from(user_id));
-  let signData = forge.pki.ed25519.sign({
-    message: hash,
-    privateKey,
-  });
+  let signData = ed25519.sign(hash, privateKey);
   const signature = base64RawURLEncode(signData);
 
   const tipBody = TIPBodyForSequencerRegister(user_id, public_key);
-  signData = forge.pki.ed25519.sign({
-    message: tipBody,
-    privateKey: Buffer.from(tipPin, 'hex'),
-  });
+  signData = ed25519.sign(tipBody, tipPin);
 
   return {
     public_key,
     signature,
-    pin_base64: signData.toString('hex'),
+    pin_base64: Buffer.from(signData).toString('hex'),
   };
 };
 
@@ -80,53 +92,43 @@ export const deriveGhostPublicKey = (r: Buffer, A: Buffer, B: Buffer, index: num
   return Buffer.from(p4.toRawBytes());
 };
 
-export const getMainnetAddressGhostKey = (recipient: GhostKeyRequest, hexSeed = '') => {
-  if (recipient.receivers.length === 0) return undefined;
-  if (hexSeed && hexSeed.length !== 128) return undefined;
-
-  const publics = recipient.receivers.map(d => getPublicFromMainnetAddress(d));
-  if (!publics.every(p => !!p)) return undefined;
-
-  const seed = hexSeed ? Buffer.from(hexSeed, 'hex') : Buffer.from(forge.random.getBytesSync(64), 'binary');
-  const r = Buffer.from(ed.scalar.toBytes(ed.setUniformBytes(seed)));
-  const keys = publics.map(addressPubic => {
-    const spendKey = addressPubic!.subarray(0, 32);
-    const viewKey = addressPubic!.subarray(32, 64);
-    const k = deriveGhostPublicKey(r, viewKey, spendKey, recipient.index);
-    return k.toString('hex');
-  });
-  return {
-    mask: ed.publicFromPrivate(r).toString('hex'),
-    keys,
-  };
-};
-
-export const buildSafeTransactionRecipient = (members: string[], threshold: number, amount: string): SafeTransactionRecipient => ({
-  members,
-  threshold,
-  amount,
-  mixAddress: buildMixAddress({ members, threshold }),
-});
-
 export const getUnspentOutputsForRecipients = (outputs: SafeUtxoOutput[], rs: SafeTransactionRecipient[]) => {
-  const totalOutput = rs.reduce((prev, cur) => prev.addUnsafe(FixedNumber.from(cur.amount)), FixedNumber.from('0'));
+  const totalOutput = rs.reduce((prev, cur) => prev.plus(BigNumber(cur.amount)), BigNumber('0'));
 
-  let totalInput = FixedNumber.from('0');
+  let totalInput = BigNumber('0');
   for (let i = 0; i < outputs.length; i++) {
     const o = outputs[i];
     if (o.state !== 'unspent') continue;
-    totalInput = totalInput.addUnsafe(FixedNumber.from(o.amount));
-    if (totalInput.subUnsafe(totalOutput).isNegative()) continue;
+    totalInput = totalInput.plus(BigNumber(o.amount));
+    if (totalInput.minus(totalOutput).isNegative()) continue;
 
     return {
       utxos: outputs.slice(0, i + 1),
-      change: totalInput.subUnsafe(totalOutput),
+      change: totalInput.minus(totalOutput),
     };
   }
   throw new Error('insufficient total input outputs');
 };
 
-export const encodeSafeTransaction = (tx: MultisigTransaction, sigs: Record<number, string>[] = []) => {
+export const buildSafeTransactionRecipient = (members: string[], threshold: number, amount: string): SafeTransactionRecipient => {
+  const mixAddress = {
+    version: 2,
+    threshold,
+    xinMembers: [],
+    uuidMembers: [],
+  } as MixAddress;
+
+  if (members.every(m => m.startsWith(MainAddressPrefix))) mixAddress.xinMembers = members;
+  if (members.every(m => validate(m))) mixAddress.uuidMembers = members;
+  if (mixAddress.uuidMembers.length === 0 && mixAddress.xinMembers.length === 0) throw new Error('empty members to build safe transaction recipient');
+
+  return {
+    mixAddress,
+    amount,
+  };
+};
+
+export const encodeSafeTransaction = (tx: SafeTransaction, sigs: Record<number, string>[] = []) => {
   const enc = new Encoder(Buffer.from([]));
 
   enc.write(magic);
@@ -143,8 +145,10 @@ export const encodeSafeTransaction = (tx: MultisigTransaction, sigs: Record<numb
     enc.encodeOutput(output);
   });
 
-  // FIXME: references
-  enc.writeInt(0);
+  enc.writeInt(tx.references.length);
+  tx.references.forEach(r => {
+    enc.write(Buffer.from(r, 'hex'));
+  });
 
   const extra = Buffer.from(tx.extra);
   enc.writeUint32(extra.byteLength);
@@ -158,9 +162,73 @@ export const encodeSafeTransaction = (tx: MultisigTransaction, sigs: Record<numb
   return enc.buf.toString('hex');
 };
 
-export const buildSafeTransaction = (utxos: SafeUtxoOutput[], rs: SafeTransactionRecipient[], gs: GhostKey[], extra: string) => {
+export const decodeSafeTransaction = (raw: string): SafeTransaction => {
+  const dec = new Decoder(Buffer.from(raw, 'hex'));
+
+  const prefix = dec.subarray(0, 2);
+  if (!prefix.equals(magic)) throw new Error('invalid magic');
+  dec.read(3);
+
+  const version = dec.readByte();
+  if (version !== TxVersionHashSignature) throw new Error('invalid version');
+
+  const asset = dec.subarray(0, 32).toString('hex');
+  dec.read(32);
+
+  const lenInput = dec.readInt();
+  const inputs = [];
+  for (let i = 0; i < lenInput; i++) {
+    inputs.push(dec.decodeInput());
+  }
+
+  const lenOutput = dec.readInt();
+  const outputs = [];
+  for (let i = 0; i < lenOutput; i++) {
+    outputs.push(dec.decodeOutput());
+  }
+
+  const lenRefs = dec.readInt();
+  const references = [];
+  for (let i = 0; i < lenRefs; i++) {
+    const hash = dec.subarray(0, 32).toString('hex');
+    dec.read(32);
+    references.push(hash);
+  }
+
+  const lenExtra = dec.readUint32();
+  const extra = dec.subarray(0, lenExtra);
+  dec.read(lenExtra);
+
+  const lenSigs = dec.readInt();
+  const signatureMap = [];
+  for (let i = 0; i < lenSigs; i++) {
+    signatureMap.push(dec.decodeSignature());
+  }
+
+  return {
+    version,
+    asset,
+    extra,
+    inputs,
+    outputs,
+    references,
+    signatureMap,
+  };
+};
+
+export const buildSafeTransaction = (
+  utxos: SafeUtxoOutput[],
+  rs: SafeTransactionRecipient[],
+  gs: (GhostKey | undefined)[],
+  extra: Buffer,
+  references: string[] = [],
+): SafeTransaction => {
   if (utxos.length === 0) throw new Error('empty inputs');
-  if (Buffer.from(extra).byteLength > 512) throw new Error('extra data is too long');
+  if (extra.byteLength > ExtraSizeGeneralLimit) {
+    const r = rs[0];
+    const amount = estimateStorageCost(extra);
+    if (extra.byteLength > ExtraSizeStorageCapacity || 'destination' in r || amount.comparedTo(r.amount) === 1) throw new Error('extra data is too long');
+  }
 
   let asset = '';
   const inputs: Input[] = [];
@@ -173,7 +241,7 @@ export const buildSafeTransaction = (utxos: SafeUtxoOutput[], rs: SafeTransactio
   const outputs: Output[] = [];
   for (let i = 0; i < rs.length; i++) {
     const r = rs[i];
-    if (r.destination) {
+    if ('destination' in r) {
       outputs.push({
         type: OutputTypeWithdrawalSubmit,
         amount: r.amount,
@@ -181,16 +249,19 @@ export const buildSafeTransaction = (utxos: SafeUtxoOutput[], rs: SafeTransactio
           address: r.destination,
           tag: r.tag ?? '',
         },
+        keys: [],
       });
       continue;
     }
+    const ghost = gs[i];
+    if (!ghost) throw new Error('invalid ghost key for normal outptus');
 
     outputs.push({
       type: OutputTypeScript,
       amount: r.amount,
-      keys: gs[i].keys,
-      mask: gs[i].mask,
-      script: encodeScript(r.threshold),
+      keys: ghost.keys,
+      mask: ghost.mask,
+      script: encodeScript(r.mixAddress.threshold),
     });
   }
 
@@ -200,10 +271,12 @@ export const buildSafeTransaction = (utxos: SafeUtxoOutput[], rs: SafeTransactio
     extra,
     inputs,
     outputs,
+    references,
+    signatureMap: [],
   };
 };
 
-export const signSafeTransaction = (tx: MultisigTransaction, utxos: SafeUtxoOutput[], views: string[], privateKey: string) => {
+export const signSafeTransaction = (tx: SafeTransaction, views: string[], privateKey: string, index = 0) => {
   const raw = encodeSafeTransaction(tx);
   const msg = blake3Hash(Buffer.from(raw, 'hex'));
 
@@ -212,22 +285,36 @@ export const signSafeTransaction = (tx: MultisigTransaction, utxos: SafeUtxoOutp
 
   const signaturesMap = [];
   for (let i = 0; i < tx.inputs.length; i++) {
-    const input = tx.inputs[i];
-    const utxo = utxos[i];
-    if (!utxo || utxo.transaction_hash !== input.hash || utxo.output_index !== input.index) {
-      throw new Error(`invalid input: ${input}`);
-    }
     const viewBuffer = Buffer.from(views[i], 'hex');
     const x = ed.setCanonicalBytes(viewBuffer);
     const t = ed.scalar.add(x, y);
     const key = Buffer.from(ed.scalar.toBytes(t));
     const sig = ed.sign(msg, key);
-    const pub = ed.publicFromPrivate(key);
     const sigs: Record<number, string> = {};
-    const index = utxo.keys.findIndex(k => k === pub.toString('hex'));
     sigs[index] = sig.toString('hex');
     signaturesMap.push(sigs);
   }
 
   return encodeSafeTransaction(tx, signaturesMap);
+};
+
+export const estimateStorageCost = (extra: Buffer) => {
+  const unit = BigNumber(ExtraStoragePriceStep);
+  const step = BigNumber(extra.byteLength).dividedToIntegerBy(ExtraSizeStorageStep).plus(1);
+  return unit.times(step);
+};
+
+export const getRecipientForStorage = (extra: Buffer) => {
+  const amount = estimateStorageCost(extra).toString();
+  const addr = getMainnetAddressFromSeed(Buffer.alloc(64).fill(1));
+  const mixAddress = {
+    version: 2,
+    xinMembers: [addr],
+    uuidMembers: [],
+    threshold: 64,
+  } as MixAddress;
+  return {
+    amount,
+    mixAddress,
+  } as SafeTransactionRecipient;
 };

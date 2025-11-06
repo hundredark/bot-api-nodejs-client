@@ -1,8 +1,8 @@
-import { AxiosInstance } from 'axios';
-import Keystore from './types/keystore';
-import { AuthenticationUserResponse } from './types/user';
+import type { AxiosInstance } from 'axios';
+import type Keystore from './types/keystore';
+import type { AuthenticationUserResponse } from './types/user';
 import { buildClient } from './utils/client';
-import { buildTipPin, getTipPinUpdateMsg, signEd25519PIN } from './utils/pin';
+import { signTipBody, getNanoTime, getTipPinUpdateMsg, getVerifyPinTipBody, signEd25519PIN } from './utils/pin';
 
 /**
  * Methods to verify or update pin with keystore
@@ -12,8 +12,8 @@ import { buildTipPin, getTipPinUpdateMsg, signEd25519PIN } from './utils/pin';
  */
 export const PinKeystoreClient = (axiosInstance: AxiosInstance, keystore: Keystore | undefined) => {
   function updatePin(firstPin: string, secondPin = ''): Promise<AuthenticationUserResponse> {
-    const oldEncrypted = secondPin ? signEd25519PIN(firstPin, keystore) : '';
-    const newEncrypted = secondPin ? signEd25519PIN(secondPin, keystore) : signEd25519PIN(firstPin, keystore);
+    const oldEncrypted = firstPin ? signEd25519PIN(firstPin, keystore) : '';
+    const newEncrypted = signEd25519PIN(secondPin, keystore);
     return axiosInstance.post<unknown, AuthenticationUserResponse>('/pin/update', { old_pin_base64: oldEncrypted, pin_base64: newEncrypted });
   }
 
@@ -22,7 +22,7 @@ export const PinKeystoreClient = (axiosInstance: AxiosInstance, keystore: Keysto
     if (pubTipBuf.byteLength !== 32) throw new Error('invalid public key');
     const pubTipHex = getTipPinUpdateMsg(pubTipBuf, counter).toString('hex');
 
-    const oldEncrypted = signEd25519PIN(firstPin, keystore);
+    const oldEncrypted = firstPin ? signEd25519PIN(firstPin, keystore) : '';
     const newEncrypted = signEd25519PIN(pubTipHex, keystore);
     return axiosInstance.post<unknown, AuthenticationUserResponse>('/pin/update', { old_pin_base64: oldEncrypted, pin_base64: newEncrypted });
   }
@@ -35,9 +35,13 @@ export const PinKeystoreClient = (axiosInstance: AxiosInstance, keystore: Keysto
     },
 
     verifyTipPin: (pin: string) => {
-      const data = buildTipPin(pin);
-      data.pin_base64 = signEd25519PIN(data.pin_base64, keystore);
-      return axiosInstance.post<unknown, AuthenticationUserResponse>('/pin/verify', data);
+      const timestamp = getNanoTime();
+      const msg = getVerifyPinTipBody(timestamp);
+      const signedTipPin = signTipBody(pin, msg);
+      return axiosInstance.post<unknown, AuthenticationUserResponse>('/pin/verify', {
+        pin_base64: signEd25519PIN(signedTipPin, keystore),
+        timestamp,
+      });
     },
 
     /** Change the PIN of the user, or setup a new PIN if it is not set yet */

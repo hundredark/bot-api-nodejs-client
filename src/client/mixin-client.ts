@@ -2,7 +2,7 @@ import merge from 'lodash.merge';
 import type { AxiosInstance } from 'axios';
 import type Keystore from './types/keystore';
 import type { HTTPConfig, RequestClient } from './types';
-import { createAxiosClient, createKeystore, createRequestClient } from './utils';
+import { createAxiosClient, createRequestClient } from './utils';
 import { AddressKeystoreClient } from './address';
 import { AppKeystoreClient } from './app';
 import { AssetKeystoreClient } from './asset';
@@ -20,13 +20,13 @@ import { PaymentBaseClient } from './payment';
 import { PinKeystoreClient } from './pin';
 import { TransferKeystoreClient } from './transfer';
 import { UserKeystoreClient } from './user';
-import { BlazeKeystoreClient } from './blaze';
+import { BlazeKeystoreClient } from '../blaze/client';
 import { UtxoKeystoreClient } from './utxo';
 import { SafeKeystoreClient } from './safe';
 
 const KeystoreClient = (axiosInstance: AxiosInstance, keystore: Keystore | undefined, config: HTTPConfig) => ({
   address: AddressKeystoreClient(axiosInstance, keystore),
-  app: AppKeystoreClient(axiosInstance),
+  app: AppKeystoreClient(axiosInstance, keystore),
   asset: AssetKeystoreClient(axiosInstance),
   blaze: BlazeKeystoreClient(keystore, config.blazeOptions),
   attachment: AttachmentKeystoreClient(axiosInstance),
@@ -50,8 +50,7 @@ const KeystoreClient = (axiosInstance: AxiosInstance, keystore: Keystore | undef
 export type KeystoreClientReturnType = ReturnType<typeof KeystoreClient>;
 
 export function MixinApi(config: HTTPConfig = {}): KeystoreClientReturnType & RequestClient {
-  const { keystore: initKeystore, requestConfig } = config;
-  const keystore = createKeystore(initKeystore);
+  const { keystore, requestConfig } = config;
 
   const axiosInstance = createAxiosClient(keystore, requestConfig);
   const requestClient = createRequestClient(axiosInstance);

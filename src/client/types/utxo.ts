@@ -18,7 +18,15 @@ export interface UtxoOutput {
   spent_at: string;
 }
 
+export interface KernelDeposit {
+  chain: string;
+  deposit_hash: string;
+  deposit_index: number;
+}
+
 export interface SafeUtxoOutput extends UtxoOutput {
+  asset_id: string;
+  kernel_asset_id: string;
   receivers: string[];
   receivers_hash: string;
   receivers_threshold: number;
@@ -26,6 +34,10 @@ export interface SafeUtxoOutput extends UtxoOutput {
   senders_hash: string;
   senders_threshold: number;
   sequence: number;
+
+  inscription_hash?: string;
+  deposit?: KernelDeposit;
+  request_id?: string;
 }
 
 export interface OutputsRequest {
@@ -37,11 +49,16 @@ export interface OutputsRequest {
   order?: 'ASC' | 'DESC';
 }
 
-export interface SafeOutputsRequest extends OutputsRequest {
+export interface SafeOutputsRequest {
   asset?: string;
+  members?: string[];
+  threshold?: number;
+  state?: UtxoState;
+  offset?: number;
+  limit?: number;
 }
 
-export interface SafeBalanceRequest extends OutputsRequest {
+export interface SafeBalanceRequest extends SafeOutputsRequest {
   asset: string;
 }
 
@@ -93,7 +110,8 @@ export interface PaymentParams {
   uuid?: string;
   mainnetAddress?: string;
   mixAddress?: string;
-  members?: string[];
+  xinMembers?: string[];
+  uuidMembers?: string[];
   threshold?: number;
 
   asset?: string;

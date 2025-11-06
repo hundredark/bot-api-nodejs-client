@@ -1,4 +1,4 @@
-import { MessageView } from './message';
+import { MessageView } from '../client/types/message';
 
 export type MessageType = MessageView | TransferView | SystemConversationPayload;
 
@@ -28,10 +28,10 @@ export interface BlazeOptions {
 }
 
 export interface BlazeHandler {
-  onMessage: (message: MessageView) => void;
-  onAckReceipt?: (message: MessageView) => void;
-  onTransfer?: (transfer: MessageView) => void;
-  onConversation?: (conversation: MessageView) => void;
+  onMessage: (message: MessageView) => void | Promise<void>;
+  onAckReceipt?: (message: MessageView) => void | Promise<void>;
+  onTransfer?: (transfer: MessageView) => void | Promise<void>;
+  onConversation?: (conversation: MessageView) => void | Promise<void>;
 }
 
 export interface BlazeMessage {

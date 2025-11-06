@@ -1,3 +1,5 @@
+import type { MixAddress } from './address';
+
 // field for:
 // GET safe/assets
 // GET safe/assets/:id
@@ -8,6 +10,8 @@ export interface SafeAsset {
   chain_id: string;
   symbol: string;
   name: string;
+  display_symbol: string;
+  display_name: string;
   icon_url: string;
   price_btc: string;
   price_usd: string;
@@ -19,6 +23,7 @@ export interface SafeAsset {
   confirmations: number;
   kernel_asset_id: string;
   price_updated_at: string;
+  collection_hash?: string;
 }
 
 export interface SafeDepositEntriesRequest {
@@ -83,11 +88,21 @@ export interface SafeWithdrawal {
   receiver: string;
 }
 
-export interface SafeTransactionRecipient {
-  members: string[];
-  threshold: number;
-  mixAddress: string;
+export interface SafeWithdrawalRecipient {
   amount: string;
-  destination?: string;
+  destination: string;
   tag?: string;
+}
+
+export interface SafeMixinRecipient {
+  mixAddress: MixAddress;
+  amount: string;
+}
+
+export type SafeTransactionRecipient = SafeWithdrawalRecipient | SafeMixinRecipient;
+
+export interface SafeWithdrawalFee {
+  type: 'withdrawal_fee';
+  amount: string;
+  asset_id: string;
 }

@@ -1,8 +1,9 @@
-import { ed25519 } from '@noble/curves/ed25519';
+import { ed25519, edwardsToMontgomery, edwardsToMontgomeryPriv, x25519 } from '@noble/curves/ed25519';
 import { Field } from '@noble/curves/abstract/modular';
 import { numberToBytesLE, bytesToNumberLE } from '@noble/curves/abstract/utils';
+import { randomBytes } from '@noble/hashes/utils';
 import { blake3Hash, sha512Hash } from './uniq';
-import { putUvarInt } from '../../mvm/encoder';
+import { putUvarInt } from './encoder';
 
 const scMinusOne = Buffer.from('ecd3f55c1a631258d69cf7a2def9de1400000000000000000000000000000010', 'hex');
 const base = ed25519.ExtendedPoint.fromHex('5866666666666666666666666666666666666666666666666666666666666666');
@@ -50,13 +51,13 @@ const scalarBaseMult = (x: bigint) => {
 
 const scalarBaseMultToPoint = (x: bigint) => base.multiply(x);
 
-const publicFromPrivate = (priv: Buffer) => {
+export const publicFromPrivate = (priv: Buffer) => {
   const x = setCanonicalBytes(priv);
   const v = scalarBaseMult(x);
   return v;
 };
 
-const sign = (msg: Buffer, key: Buffer) => {
+export const sign = (msg: Buffer, key: Buffer) => {
   const digest1 = sha512Hash(key.subarray(0, 32));
   const messageDigest = sha512Hash(Buffer.concat([digest1.subarray(32), msg]));
 
@@ -98,8 +99,28 @@ const hashScalar = (k: Buffer, index: number) => {
   return setUniformBytes(src);
 };
 
+export const getRandomBytes = (len?: number) => Buffer.from(randomBytes(len ?? ed25519.CURVE.Fp.BYTES));
+
+export const getKeyPair = () => {
+  const seed = getRandomBytes();
+  const publicKey = Buffer.from(ed25519.getPublicKey(seed));
+  return {
+    privateKey: Buffer.concat([seed, publicKey]),
+    publicKey,
+    seed,
+  };
+};
+
+export const newKeyFromSeed = (seed: Buffer) => {
+  const s = setUniformBytes(seed);
+  return Buffer.from(numberToBytesLE(s, 32));
+};
+
 export const edwards25519 = {
   scalar: fn,
+  x25519,
+  edwardsToMontgomery,
+  edwardsToMontgomeryPriv,
 
   setBytesWithClamping,
   setCanonicalBytes,
@@ -109,6 +130,8 @@ export const edwards25519 = {
   publicFromPrivate,
   scalarBaseMult,
   scalarBaseMultToPoint,
+
+  newKeyFromSeed,
   sign,
 
   newPoint,

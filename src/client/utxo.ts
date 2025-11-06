@@ -1,5 +1,5 @@
-import { AxiosInstance } from 'axios';
-import {
+import type { AxiosInstance } from 'axios';
+import type {
   GhostKey,
   GhostKeyRequest,
   OutputFetchRequest,
@@ -10,8 +10,10 @@ import {
   TransactionRequest,
   SequencerTransactionRequest,
   UtxoOutput,
+  SafeTransactionRecipient,
 } from './types';
-import { buildClient, getTotalBalanceFromOutputs, hashMembers } from './utils';
+import { blake3Hash, buildClient, deriveGhostPublicKey, getPublicFromMainnetAddress, getTotalBalanceFromOutputs, hashMembers, integerToBytes, uniqueConversationID } from './utils';
+import { edwards25519 as ed, newKeyFromSeed } from './utils/ed25519';
 
 export const UtxoKeystoreClient = (axiosInstance: AxiosInstance) => ({
   outputs: (params: OutputsRequest): Promise<UtxoOutput[]> =>
@@ -23,13 +25,13 @@ export const UtxoKeystoreClient = (axiosInstance: AxiosInstance) => ({
     }),
 
   /**
-   * asset should be SHA256Hash of asset_id, otherwise asset param would not work
+   * Utxos of current user will be returned, if members and threshold are not provided.
    */
   safeOutputs: (params: SafeOutputsRequest): Promise<SafeUtxoOutput[]> =>
     axiosInstance.get<unknown, SafeUtxoOutput[]>(`/safe/outputs`, {
       params: {
         ...params,
-        members: hashMembers(params.members),
+        members: params.members ? hashMembers(params.members) : undefined,
       },
     }),
 
@@ -37,7 +39,7 @@ export const UtxoKeystoreClient = (axiosInstance: AxiosInstance) => ({
     const outputs = await axiosInstance.get<unknown, SafeUtxoOutput[]>(`/safe/outputs`, {
       params: {
         ...params,
-        members: hashMembers(params.members),
+        members: params.members ? hashMembers(params.members) : undefined,
         state: 'unspent',
       },
     });
@@ -56,14 +58,52 @@ export const UtxoKeystoreClient = (axiosInstance: AxiosInstance) => ({
 
   /**
    * Get one-time information to transfer assets to single user or multisigs group, not required for Mixin Kernel Address
+   * index in GhostKeyRequest MUST be the same with the index of corresponding output
    * receivers will be sorted in the function
    */
-  ghostKey: (params: GhostKeyRequest[]): Promise<GhostKey[]> => {
-    params = params.map(p => ({
-      ...p,
-      receivers: p.receivers.sort(),
-    }));
-    return axiosInstance.post<unknown, GhostKey[]>('/safe/keys', params);
+  ghostKey: async (recipients: SafeTransactionRecipient[], trace: string, spendPrivateKey: string): Promise<(GhostKey | undefined)[]> => {
+    const traceHash = blake3Hash(Buffer.from(trace));
+    const privSpend = Buffer.from(spendPrivateKey, 'hex');
+    const ghostKeys: (GhostKey | undefined)[] = new Array(recipients.length).fill(undefined);
+    const uuidRequests: GhostKeyRequest[] = [];
+
+    recipients.forEach((r, i) => {
+      if ('destination' in r) return;
+
+      const ma = r.mixAddress;
+      const seedHash = blake3Hash(Buffer.concat([traceHash, Buffer.from(integerToBytes(i))]));
+      if (ma.xinMembers.length) {
+        const privHash = blake3Hash(Buffer.concat([seedHash, privSpend]));
+        const key = newKeyFromSeed(Buffer.concat([traceHash, privHash]));
+        const mask = ed.publicFromPrivate(key).toString('hex');
+        const keys = ma.xinMembers.map(member => {
+          const pub = getPublicFromMainnetAddress(member);
+          const spendKey = pub!.subarray(0, 32);
+          const viewKey = pub!.subarray(32, 64);
+          const k = deriveGhostPublicKey(key, viewKey, spendKey, i);
+          return k.toString('hex');
+        });
+        ghostKeys[i] = {
+          mask,
+          keys,
+        };
+      } else {
+        const hint = uniqueConversationID(traceHash.toString('hex'), seedHash.toString('hex'));
+        uuidRequests.push({
+          receivers: ma.uuidMembers.sort(),
+          index: i,
+          hint,
+        });
+      }
+    });
+    if (uuidRequests.length) {
+      const ghosts = await axiosInstance.post<unknown, GhostKey[]>('/safe/keys', uuidRequests);
+      ghosts.forEach((ghost, i) => {
+        const { index } = uuidRequests[i];
+        ghostKeys[index] = ghost;
+      });
+    }
+    return ghostKeys;
   },
 });
 

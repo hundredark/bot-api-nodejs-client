@@ -2,13 +2,11 @@ export interface AddressResponse {
   type: 'address';
   address_id: string;
   asset_id: string;
-  fee_asset_id: string;
+  chain_id: string;
   destination: string;
-  tag: string;
-  label: string;
-  fee: string;
-  reserve: string;
   dust: string;
+  label: string;
+  tag: string;
   updated_at: string;
 }
 
@@ -22,6 +20,8 @@ export interface AddressRequest {
 }
 
 export interface MixAddress {
-  members: string[];
+  version: number;
+  uuidMembers: string[];
+  xinMembers: string[];
   threshold: number;
 }

@@ -1,6 +1,7 @@
-import { utils } from 'ethers';
 import { parse } from 'uuid';
-import { Aggregated, Input, Output } from './types';
+import BigNumber from 'bignumber.js';
+import type { Aggregated, Input, Output } from '../types';
+import { parseUnits } from './amount';
 
 const MaximumEncodingInt = 0xffff;
 
@@ -10,13 +11,24 @@ export const magic = Buffer.from([0x77, 0x77]);
 const empty = Buffer.from([0x00, 0x00]);
 
 export const integerToBytes = (x: number) => {
-  const bytes = [];
+  const bytes: number[] = [];
+  if (x === 0) return bytes;
   let i = x;
   do {
     bytes.unshift(i & 255);
     i = (i / 2 ** 8) | 0;
   } while (i !== 0);
   return bytes;
+};
+
+export const bigNumberToBytes = (x: BigNumber) => {
+  const bytes = [];
+  let i = x;
+  do {
+    bytes.unshift(i.mod(256).toNumber());
+    i = i.dividedToIntegerBy(256);
+  } while (!i.isZero());
+  return Buffer.from(bytes);
 };
 
 export const putUvarInt = (x: number) => {
@@ -39,6 +51,10 @@ export class Encoder {
     if (buf) {
       this.buf = buf;
     }
+  }
+
+  buffer() {
+    return this.buf;
   }
 
   hex() {
@@ -89,10 +105,10 @@ export class Encoder {
     this.write(buf);
   }
 
-  writeInteger(i: number) {
-    const b = integerToBytes(i);
-    this.writeInt(b.length);
-    this.write(Buffer.from(b));
+  writeInteger(i: BigNumber) {
+    const b = bigNumberToBytes(i);
+    this.writeInt(b.byteLength);
+    this.write(b);
   }
 
   // TODO convert array like to array
@@ -128,7 +144,7 @@ export class Encoder {
       this.write(tx);
 
       this.writeUint64(d.index);
-      this.writeInteger(d.amount);
+      this.writeInteger(parseUnits(d.amount, 8));
     }
     const m = i.mint;
     if (typeof m === 'undefined') {
@@ -140,7 +156,7 @@ export class Encoder {
       this.write(Buffer.from(m.group));
 
       this.writeUint64(m.batch);
-      this.writeInteger(m.amount);
+      this.writeInteger(parseUnits(m.amount, 8));
     }
   }
 
@@ -148,23 +164,22 @@ export class Encoder {
     const o = output;
     if (!o.type) o.type = 0;
     this.write(Buffer.from([0x00, o.type]));
-    this.writeInteger(utils.parseUnits(Number(o.amount).toFixed(8), 8).toNumber());
-    this.writeInt(o.keys!.length);
+    this.writeInteger(parseUnits(o.amount, 8));
 
-    o.keys!.forEach(k => this.write(Buffer.from(k, 'hex')));
+    this.writeInt(o.keys.length);
+    o.keys.forEach(k => this.write(Buffer.from(k, 'hex')));
 
-    if (!o.mask) o.mask = '';
-    this.write(Buffer.from(o.mask, 'hex'));
+    this.write(o.mask ? Buffer.from(o.mask, 'hex') : Buffer.alloc(32, 0));
 
     if (!o.script) o.script = '';
     const s = Buffer.from(o.script, 'hex');
     this.writeInt(s.byteLength);
     this.write(s);
+
     const w = o.withdrawal;
-    if (typeof w === 'undefined') {
+    if (!w) {
       this.write(empty);
     } else {
-      // TODO... not check...
       this.write(magic);
 
       const addr = Buffer.from(w.address);

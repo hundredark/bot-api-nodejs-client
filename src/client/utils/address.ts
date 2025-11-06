@@ -1,7 +1,8 @@
-import { utils } from 'ethers';
+import bs58 from 'bs58';
 import { stringify, parse } from 'uuid';
-import { MixAddress } from '../types';
+import type { MixAddress } from '../types';
 import { newHash } from './uniq';
+import { newKeyFromSeed, publicFromPrivate } from './ed25519';
 
 export const MainAddressPrefix = 'XIN';
 export const MixAddressPrefix = 'MIX';
@@ -11,13 +12,13 @@ export const getPublicFromMainnetAddress = (address: string) => {
   try {
     if (!address.startsWith(MainAddressPrefix)) return undefined;
 
-    const data = utils.base58.decode(address.slice(3));
+    const data = bs58.decode(address.slice(3));
     if (data.length !== 68) return undefined;
 
     const payload = data.subarray(0, data.length - 4);
     const msg = Buffer.concat([Buffer.from(MainAddressPrefix), Buffer.from(payload)]);
     const checksum = newHash(msg);
-    if (!checksum.subarray(0, 4).equals(data.subarray(64))) return undefined;
+    if (!checksum.subarray(0, 4).equals(Buffer.from(data.subarray(data.length - 4)))) return undefined;
     return Buffer.from(payload);
   } catch {
     return undefined;
@@ -28,14 +29,24 @@ export const getMainnetAddressFromPublic = (pubKey: Buffer) => {
   const msg = Buffer.concat([Buffer.from(MainAddressPrefix), pubKey]);
   const checksum = newHash(msg);
   const data = Buffer.concat([pubKey, checksum.subarray(0, 4)]);
-  return `${MainAddressPrefix}${utils.base58.encode(data)}`;
+  return `${MainAddressPrefix}${bs58.encode(data)}`;
+};
+
+export const getMainnetAddressFromSeed = (seed: Buffer) => {
+  const hash1 = newHash(seed);
+  const hash2 = newHash(hash1);
+  const src = Buffer.concat([hash1, hash2]);
+  const spend = newKeyFromSeed(seed);
+  const view = newKeyFromSeed(src);
+  const pub = Buffer.concat([publicFromPrivate(spend), publicFromPrivate(view)]);
+  return getMainnetAddressFromPublic(pub);
 };
 
 export const parseMixAddress = (address: string): MixAddress | undefined => {
   try {
     if (!address.startsWith(MixAddressPrefix)) return undefined;
 
-    const data = utils.base58.decode(address.slice(3));
+    const data = bs58.decode(address.slice(3));
     if (data.length < 3 + 16 + 4) {
       return undefined;
     }
@@ -43,7 +54,7 @@ export const parseMixAddress = (address: string): MixAddress | undefined => {
     const payload = data.subarray(0, data.length - 4);
     const msg = Buffer.concat([Buffer.from(MixAddressPrefix), Buffer.from(payload)]);
     const checksum = newHash(msg);
-    if (!checksum.subarray(0, 4).equals(data.subarray(data.length - 4))) return undefined;
+    if (!checksum.subarray(0, 4).equals(Buffer.from(data.subarray(data.length - 4)))) return undefined;
 
     const version = data.at(0);
     const threshold = data.at(1);
@@ -59,7 +70,9 @@ export const parseMixAddress = (address: string): MixAddress | undefined => {
         members.push(id);
       }
       return {
-        members,
+        version,
+        uuidMembers: members,
+        xinMembers: [],
         threshold,
       };
     }
@@ -70,7 +83,9 @@ export const parseMixAddress = (address: string): MixAddress | undefined => {
         members.push(addr);
       }
       return {
-        members,
+        version,
+        uuidMembers: [],
+        xinMembers: members,
         threshold,
       };
     }
@@ -81,36 +96,42 @@ export const parseMixAddress = (address: string): MixAddress | undefined => {
   }
 };
 
-export const buildMixAddress = (ma: MixAddress): string => {
-  if (ma.members.length > 255) {
-    throw new Error(`invalid members length: ${ma.members.length}`);
+export const getMixAddressBuffer = (ma: MixAddress) => {
+  const members = ma.uuidMembers.length ? ma.uuidMembers : ma.xinMembers;
+  if (members.length > 255) {
+    throw new Error(`invalid members length: ${members.length}`);
   }
-  if (ma.threshold === 0 || ma.threshold > ma.members.length) {
+  if (ma.threshold === 0 || ma.threshold > members.length) {
     throw new Error(`invalid threshold: ${ma.threshold}`);
   }
 
-  const prefix = Buffer.concat([Buffer.from([MixAddressVersion]), Buffer.from([ma.threshold]), Buffer.from([ma.members.length])]);
+  const prefix = Buffer.concat([Buffer.from([MixAddressVersion]), Buffer.from([ma.threshold]), Buffer.from([members.length])]);
 
-  let type = '';
   const memberData: Buffer[] = [];
-  ma.members.forEach(addr => {
-    if (addr.startsWith(MainAddressPrefix)) {
-      if (!type) type = 'xin';
-      if (type !== 'xin') throw new Error(`inconsistent address type`);
+  if (ma.uuidMembers.length)
+    members.forEach(addr => {
+      const id = parse(addr);
+      if (!id) throw new Error(`invalid uuid address: ${addr}`);
+      memberData.push(Buffer.from(Uint8Array.from(id)));
+    });
+  else if (ma.xinMembers)
+    members.forEach(addr => {
       const pub = getPublicFromMainnetAddress(addr);
       if (!pub) throw new Error(`invalid mainnet address: ${addr}`);
       memberData.push(pub);
-    } else {
-      if (!type) type = 'uuid';
-      if (type !== 'uuid') throw new Error(`inconsistent address type`);
-      const id = parse(addr);
-      if (!id) throw new Error(`invalid mainnet address: ${addr}`);
-      memberData.push(Buffer.from(Uint8Array.from(id)));
-    }
-  });
+    });
 
-  const msg = Buffer.concat([Buffer.from(MixAddressPrefix), prefix, ...memberData]);
+  return Buffer.concat([prefix, ...memberData]);
+};
+
+export const getMixAddressStringFromBuffer = (data: Buffer) => {
+  const msg = Buffer.concat([Buffer.from(MixAddressPrefix), data]);
   const checksum = newHash(msg);
-  const data = Buffer.concat([prefix, ...memberData, checksum.subarray(0, 4)]);
-  return `${MixAddressPrefix}${utils.base58.encode(data)}`;
+  const buffer = Buffer.concat([data, checksum.subarray(0, 4)]);
+  return `${MixAddressPrefix}${bs58.encode(buffer)}`;
+};
+
+export const buildMixAddress = (ma: MixAddress): string => {
+  const data = getMixAddressBuffer(ma);
+  return getMixAddressStringFromBuffer(data);
 };

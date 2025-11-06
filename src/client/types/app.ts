@@ -13,6 +13,10 @@ export interface AppResponse {
   creator_id: string;
   app_secret: string;
   session_secret: string;
+  session_public_key: string;
+  has_safe: boolean;
+  spend_public_key: string;
+  safe_created_at: string;
   updated_at: string;
 }
 
@@ -21,13 +25,28 @@ export interface AppPropertyResponse {
   price: string;
 }
 
+export interface AppBillingCostResponse {
+  users: string;
+  resources: string;
+}
+
+export interface AppBillingResponse {
+  app_id: string;
+  cost: AppBillingCostResponse;
+  credit: string;
+}
+
 export interface AppSecretResponse {
   app_secret: string;
 }
 
 export interface AppSessionResponse {
   session_id: string;
-  pin_token_base64: string;
+  server_public_key: string;
+}
+
+export interface AppRegistrationResponse {
+  spend_public_key: string;
 }
 
 export interface AppRequest {
@@ -42,7 +61,10 @@ export interface AppRequest {
 }
 
 export interface AppSafeSessionRequest {
-  public_hex?: string;
-  signature?: string;
-  session_secret: string;
+  session_public_key: string;
+}
+
+export interface AppSafeRegistrationRequest {
+  spend_public_key: string;
+  signature_base64: string;
 }

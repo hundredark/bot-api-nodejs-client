@@ -1,4 +1,4 @@
 export * from './client';
-export * from './mvm';
+export * from './blaze';
 export * from './webview';
 export * from './constant';

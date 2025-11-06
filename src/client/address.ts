@@ -1,7 +1,7 @@
-import { AxiosInstance } from 'axios';
-import Keystore from './types/keystore';
-import { AddressResponse, AddressRequest } from './types/address';
-import { signEd25519PIN } from './utils/pin';
+import type { AxiosInstance } from 'axios';
+import type Keystore from './types/keystore';
+import type { AddressResponse, AddressRequest } from './types/address';
+import { getCreateAddressTipBody, getRemoveAddressTipBody, signEd25519PIN, signTipBody } from './utils/pin';
 import { buildClient } from './utils/client';
 
 /**
@@ -15,18 +15,25 @@ export const AddressKeystoreClient = (axiosInstance: AxiosInstance, keystore: Ke
   /** Get an address by addressID */
   fetch: (addressID: string): Promise<AddressResponse> => axiosInstance.get<unknown, AddressResponse>(`/addresses/${addressID}`),
 
+  /** @deprecated Use fetchListOfChain() instead */
   /** Get a list of withdrawal addresses for the given asset */
   fetchList: (assetID: string): Promise<AddressResponse[]> => axiosInstance.get<unknown, AddressResponse[]>(`/assets/${assetID}/addresses`),
 
+  fetchListOfChain: (chainID: string): Promise<AddressResponse[]> => axiosInstance.get<unknown, AddressResponse[]>(`/safe/addresses?chain=${chainID}`),
+
   /** Create a new withdrawal address */
   create: (pin: string, params: AddressRequest): Promise<AddressResponse> => {
-    const encrypted = signEd25519PIN(pin, keystore);
+    const msg = getCreateAddressTipBody(params.asset_id, params.destination, params.tag ?? '', params.label);
+    const signedTipPin = signTipBody(pin, msg);
+    const encrypted = signEd25519PIN(signedTipPin, keystore);
     return axiosInstance.post<unknown, AddressResponse>('/addresses', { ...params, pin: encrypted });
   },
 
   /** Delete a specified address by addressID */
   delete: (pin: string, addressID: string): Promise<any> => {
-    const encrypted = signEd25519PIN(pin, keystore);
+    const msg = getRemoveAddressTipBody(addressID);
+    const signedTipPin = signTipBody(pin, msg);
+    const encrypted = signEd25519PIN(signedTipPin, keystore);
     return axiosInstance.post<unknown, any>(`/addresses/${addressID}/delete`, { pin: encrypted });
   },
 });

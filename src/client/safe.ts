@@ -1,5 +1,5 @@
-import { AxiosInstance } from 'axios';
-import {
+import type { AxiosInstance } from 'axios';
+import type {
   Keystore,
   AuthenticationUserResponse,
   SafeAsset,
@@ -9,6 +9,7 @@ import {
   SafePendingDepositResponse,
   SafeSnapshot,
   SafeSnapshotsRequest,
+  SafeWithdrawalFee,
 } from './types';
 import { buildClient, signEd25519PIN, signSafeRegistration } from './utils';
 
@@ -28,9 +29,11 @@ export const SafeKeystoreClient = (axiosInstance: AxiosInstance, keystore: Keyst
 
   fetchAssets: (assetIds: string[]): Promise<SafeAsset[]> => axiosInstance.post<unknown, SafeAsset[]>(`/safe/assets/fetch`, assetIds),
 
+  fetchFee: (asset: string, destination: string) => axiosInstance.get<unknown, SafeWithdrawalFee[]>(`/safe/assets/${asset}/fees`, { params: { destination } }),
+
   depositEntries: (data: SafeDepositEntriesRequest) => axiosInstance.post<unknown, SafeDepositEntryResponse[]>(`/safe/deposit/entries`, data),
 
-  createDeposit: (chain_id: string) => axiosInstance.post<unknown, SafeDepositEntryResponse[]>('/safe/deposit_entries', { chain_id }),
+  createDeposit: (chain_id: string) => axiosInstance.post<unknown, SafeDepositEntryResponse[]>('/safe/deposit/entries', { chain_id }),
 
   pendingDeposits: (params: SafePendingDepositRequest): Promise<SafePendingDepositResponse[]> =>
     axiosInstance.get<unknown, SafePendingDepositResponse[]>(`/safe/deposits`, { params }),

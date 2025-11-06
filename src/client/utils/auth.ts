@@ -1,29 +1,26 @@
 import serialize from 'serialize-javascript';
-import forge from 'node-forge';
+import { ed25519 } from '@noble/curves/ed25519';
 import { validate } from 'uuid';
-import Keystore from '../types/keystore';
-import { base64RawURLDecode, base64RawURLEncode } from './base64';
+import type { Keystore, AppKeystore, OAuthKeystore, NetworkUserKeystore } from '../types/keystore';
+import { base64RawURLEncode } from './base64';
+import { sha256Hash } from './uniq';
+import { getKeyPair, getRandomBytes } from './ed25519';
 
-export const getED25519KeyPair = () => {
-  const keypair = forge.pki.ed25519.generateKeyPair();
-  return {
-    privateKey: base64RawURLEncode(keypair.privateKey),
-    publicKey: base64RawURLEncode(keypair.publicKey),
-  };
+export const getED25519KeyPair = () => getKeyPair();
+
+export const getChallenge = () => {
+  const seed = getRandomBytes(32);
+  const verifier = base64RawURLEncode(seed);
+  const challenge = base64RawURLEncode(sha256Hash(seed));
+  return { verifier, challenge };
 };
 
-const signToken = (payload: Object, private_key: string): string => {
+export const signToken = (payload: Object, private_key: string): string => {
   const header = base64RawURLEncode(serialize({ alg: 'EdDSA', typ: 'JWT' }));
   const payloadStr = base64RawURLEncode(serialize(payload));
-
-  const privateKey = base64RawURLDecode(private_key);
   const result = [header, payloadStr];
-  const signData = forge.pki.ed25519.sign({
-    message: result.join('.'),
-    encoding: 'utf8',
-    privateKey,
-  });
 
+  const signData = ed25519.sign(Buffer.from(result.join('.')), private_key);
   const sign = base64RawURLEncode(signData);
   result.push(sign);
   return result.join('.');
@@ -33,10 +30,12 @@ const signToken = (payload: Object, private_key: string): string => {
  * sign an authentication token
  * sig: sha256(method + uri + params)
  */
-export const signAuthenticationToken = (methodRaw: string | undefined, uri: string, params: Object | string, requestID: string, keystore: Keystore) => {
+export const signAuthenticationToken = (methodRaw: string | undefined, uri: string, params: Object | string, requestID: string, keystore: AppKeystore | NetworkUserKeystore) => {
   if (!keystore.session_id || !validate(keystore.session_id)) return '';
 
-  const method = methodRaw!.toLocaleUpperCase() || 'GET';
+  let method = 'GET';
+  if (methodRaw) method = methodRaw.toLocaleUpperCase();
+
   let data: string = '';
   if (typeof params === 'object') {
     data = serialize(params, { unsafe: true });
@@ -46,20 +45,19 @@ export const signAuthenticationToken = (methodRaw: string | undefined, uri: stri
 
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + 3600;
-  const md = forge.md.sha256.create();
-  md.update(method + uri + data, 'utf8');
+  const sha256 = sha256Hash(Buffer.from(method + uri + data)).toString('hex');
 
   const payload = {
-    uid: keystore.user_id,
+    uid: keystore.app_id,
     sid: keystore.session_id,
     iat,
     exp,
     jti: requestID,
-    sig: md.digest().toHex(),
-    scp: keystore.scope || 'FULL',
+    sig: sha256,
+    scp: 'FULL',
   };
 
-  return signToken(payload, keystore.private_key!);
+  return signToken(payload, keystore.session_private_key);
 };
 
 /**
@@ -68,10 +66,12 @@ export const signAuthenticationToken = (methodRaw: string | undefined, uri: stri
  * requestID should equal the one in header
  * scope should be oauth returned
  */
-export const signOauthAccessToken = (methodRaw: string | undefined, uri: string, params: Object | string, requestID: string, keystore: Keystore) => {
+export const signOauthAccessToken = (methodRaw: string | undefined, uri: string, params: Object | string, requestID: string, keystore: OAuthKeystore) => {
   if (!keystore.scope) return '';
 
-  const method = methodRaw!.toLocaleUpperCase() || 'GET';
+  let method = 'GET';
+  if (methodRaw) method = methodRaw.toLocaleUpperCase();
+
   let data: string = '';
   if (typeof params === 'object') {
     data = serialize(params, { unsafe: true });
@@ -81,30 +81,29 @@ export const signOauthAccessToken = (methodRaw: string | undefined, uri: string,
 
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + 3600;
-  const md = forge.md.sha256.create();
-  md.update(method + uri + data, 'utf8');
+  const sha256 = sha256Hash(Buffer.from(method + uri + data)).toString('hex');
 
   const payload = {
-    iss: keystore.user_id,
+    iss: keystore.app_id,
     aid: keystore.authorization_id,
     iat,
     exp,
     jti: requestID,
-    sig: md.digest().toHex(),
+    sig: sha256,
     scp: keystore.scope,
   };
 
-  return signToken(payload, keystore.private_key!);
+  return signToken(payload, keystore.session_private_key);
 };
 
 export const signAccessToken = (methodRaw: string | undefined, uri: string, params: Object | string, requestID: string, keystore: Keystore | undefined) => {
-  if (!keystore || !keystore.user_id || !keystore.private_key) return '';
-  if (!validate(keystore.user_id)) return '';
+  if (!keystore || !keystore.app_id || !keystore.session_private_key) return '';
+  if (!validate(keystore.app_id)) return '';
 
-  const privateKey = base64RawURLDecode(keystore.private_key);
-  if (privateKey.length !== 64) return '';
+  const privateKey = Buffer.from(keystore.session_private_key, 'hex');
+  if (privateKey.byteLength !== 32) return '';
 
-  if (keystore.authorization_id) {
+  if ('authorization_id' in keystore) {
     return signOauthAccessToken(methodRaw, uri, params, requestID, keystore);
   }
   return signAuthenticationToken(methodRaw, uri, params, requestID, keystore);

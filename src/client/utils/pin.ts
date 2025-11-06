@@ -1,37 +1,23 @@
 // @ts-ignore
-import nano from 'nano-seconds';
-import { sharedKey } from 'curve25519-js';
-import forge from 'node-forge';
+import { now as nanonow } from 'nano-seconds';
+import { ed25519 } from '@noble/curves/ed25519';
+import { cbc } from '@noble/ciphers/aes';
 import { Uint64LE as Uint64 } from 'int64-buffer';
-import Keystore from '../types/keystore';
-import { base64RawURLEncode } from './base64';
-import { Encoder } from '../../mvm';
+import type { Keystore, AppKeystore, NetworkUserKeystore } from '../types/keystore';
+import { base64RawURLDecode, base64RawURLEncode } from './base64';
+import { Encoder } from './encoder';
+import { edwards25519 as ed, getRandomBytes } from './ed25519';
+import { sha256Hash } from './uniq';
 
 export const getNanoTime = () => {
-  const now: number[] = nano.now();
+  const now: number[] = nanonow();
   return now[0] * 1e9 + now[1];
 };
 
-const privateKeyToCurve25519 = (privateKey: Buffer) => {
-  const seed = forge.util.createBuffer(privateKey.subarray(0, 32), 'raw');
-
-  const md = forge.md.sha512.create();
-  md.update(seed.getBytes());
-  const res = md.digest().getBytes();
-
-  const digest = Buffer.from(res, 'binary');
-  digest[0] &= 248;
-  digest[31] &= 127;
-  digest[31] |= 64;
-  return digest.subarray(0, 32);
-};
-
-export const sharedEd25519Key = (pinTokenRaw: string, privateKeyRaw: string) => {
-  const pinToken = Buffer.from(pinTokenRaw, 'base64');
-  let privateKey = Buffer.from(privateKeyRaw, 'base64');
-  privateKey = privateKeyToCurve25519(privateKey);
-
-  return sharedKey(privateKey, pinToken);
+export const sharedEd25519Key = (keystore: AppKeystore | NetworkUserKeystore) => {
+  const pub = 'server_public_key' in keystore ? ed.edwardsToMontgomery(Buffer.from(keystore.server_public_key, 'hex')) : base64RawURLDecode(keystore.pin_token_base64);
+  const pri = ed.edwardsToMontgomeryPriv(Buffer.from(keystore.session_private_key, 'hex'));
+  return ed.x25519.getSharedSecret(pri, pub);
 };
 
 export const getTipPinUpdateMsg = (pub: Buffer, counter: number) => {
@@ -41,52 +27,54 @@ export const getTipPinUpdateMsg = (pub: Buffer, counter: number) => {
 };
 
 export const signEd25519PIN = (pin: string, keystore: Keystore | undefined): string => {
-  if (!keystore) {
-    return '';
-  }
+  if (!keystore || !keystore.session_private_key) return '';
+  if (!('server_public_key' in keystore) && !('pin_token_base64' in keystore)) return '';
   const blockSize = 16;
 
-  const format = pin.length > 6 ? 'hex' : 'utf8';
-  const _pin = Buffer.from(pin, format);
+  const _pin = Buffer.from(pin, 'hex');
   const iterator = Buffer.from(new Uint64(getNanoTime()).toBuffer());
   const time = Buffer.from(new Uint64(Date.now() / 1000).toBuffer());
-  const buf = Buffer.concat([_pin, time, iterator]);
+  let buffer = Buffer.concat([_pin, time, iterator]);
 
-  const buffer = forge.util.createBuffer(buf.toString('binary'));
-  const paddingLen = blockSize - (buffer.length() % blockSize);
+  const paddingLen = blockSize - (buffer.byteLength % blockSize);
   const paddings = [];
   for (let i = 0; i < paddingLen; i += 1) {
     paddings.push(paddingLen);
   }
-  buffer.putBytes(Buffer.from(paddings).toString('binary'));
+  buffer = Buffer.concat([buffer, Buffer.from(paddings)]);
 
-  const iv = forge.random.getBytesSync(blockSize);
-  const sharedKey = sharedEd25519Key(keystore.pin_token!, keystore.private_key!);
-  const cipher = forge.cipher.createCipher('AES-CBC', forge.util.createBuffer(sharedKey, 'raw'));
-  cipher.start({ iv });
-  cipher.update(buffer);
-  cipher.finish();
+  const iv = getRandomBytes(16);
+  const sharedKey = sharedEd25519Key(keystore);
 
-  const pinBuff = forge.util.createBuffer();
-  pinBuff.putBytes(iv);
-  pinBuff.putBytes(cipher.output.getBytes());
+  const stream = cbc(sharedKey, iv);
+  const res = stream.encrypt(buffer);
 
-  const len = pinBuff.length();
-  const encryptedBytes = Buffer.from(pinBuff.getBytes(len - 16), 'binary');
+  const pinBuff = Buffer.concat([iv, res]);
+  const encryptedBytes = pinBuff.subarray(0, pinBuff.byteLength - blockSize);
   return base64RawURLEncode(encryptedBytes);
 };
 
-export const buildTipPin = (pin: string) => {
-  const timestamp = getNanoTime();
+export const getCreateAddressTipBody = (asset_id: string, publicKey: string, tag: string, name: string) => {
+  const msg = `TIP:ADDRESS:ADD:${asset_id + publicKey + tag + name}`;
+  return sha256Hash(Buffer.from(msg));
+};
+
+export const getRemoveAddressTipBody = (address_id: string) => {
+  const msg = `TIP:ADDRESS:REMOVE:${address_id}`;
+  return sha256Hash(Buffer.from(msg));
+};
+
+export const getVerifyPinTipBody = (timestamp: number) => {
   const msg = `TIP:VERIFY:${`${timestamp}`.padStart(32, '0')}`;
-  const privateKey = Buffer.from(pin, 'hex');
-  const signData = forge.pki.ed25519.sign({
-    message: msg,
-    encoding: 'utf8',
-    privateKey,
-  });
-  return {
-    pin_base64: signData.toString('hex'),
-    timestamp,
-  };
+  return Buffer.from(msg);
+};
+
+export const getOwnershipTransferTipBody = (user_id: string) => {
+  const msg = `TIP:APP:OWNERSHIP:TRANSFER:${user_id}`;
+  return sha256Hash(Buffer.from(msg));
+};
+
+export const signTipBody = (pin: string, msg: Buffer) => {
+  const signData = Buffer.from(ed25519.sign(msg, pin));
+  return signData.toString('hex');
 };
