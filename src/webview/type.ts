@@ -49,7 +49,7 @@ declare global {
       getTipAddress?: Messengers['getTipAddress'];
       tipSign?: Messengers['tipSign'];
     };
-    assetsCallbackFunction?: (res: WebviewAsset[]) => void;
+    assetsCallbackFunction?: (res: string) => void;
     tipAddressCallbackFunction?: (address: string) => void;
     tipSignCallbackFunction?: (signature: string) => void;
   }
