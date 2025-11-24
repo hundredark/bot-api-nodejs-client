@@ -126,17 +126,17 @@ export const WebViewApi = () => {
       }
     },
 
-    signBotSignature: async (appId: string, reloadPublicKey: boolean, method: string, path: string, body: string, callbackFunction: string) => {
+    signBotSignature: (appId: string, reloadPublicKey: boolean, method: string, path: string, body: string, callbackFunction: string) => {
       switch (getMixinContext().platform) {
         case 'iOS':
           if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.signBotSignature) {
-            await window.webkit.messageHandlers.signBotSignature.postMessage([appId, reloadPublicKey, method, path, body, callbackFunction]);
+            window.webkit.messageHandlers.signBotSignature.postMessage([appId, reloadPublicKey, method, path, body, callbackFunction]);
           }
           break;
         case 'Android':
         case 'Desktop':
-          if (window.MixinContext && typeof window.MixinContext.getAssets === 'function') {
-            await window.MixinContext.signBotSignature(appId, reloadPublicKey, method, path, body, callbackFunction);
+          if (window.MixinContext && typeof window.MixinContext.signBotSignature === 'function') {
+            window.MixinContext.signBotSignature(appId, reloadPublicKey, method, path, body, callbackFunction);
           }
           break;
         default:
