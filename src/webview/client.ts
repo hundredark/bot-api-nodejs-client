@@ -136,7 +136,7 @@ export const WebViewApi = () => {
         case 'Android':
         case 'Desktop':
           if (window.MixinContext && typeof window.MixinContext.signBotSignature === 'function') {
-            window.MixinContext.signBotSignature(appId, reloadPublicKey, method, path, body, callbackFunction);
+            window.MixinContext.signBotSignature([appId, reloadPublicKey, method, path, body, callbackFunction]);
           }
           break;
         default:

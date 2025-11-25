@@ -25,7 +25,7 @@ export interface Messengers {
   getAssets: (assets: string[], globalCallBackFuncName: string) => void;
   getTipAddress: (chainId: string, globalCallBackFuncName: string) => void;
   tipSign: (chainId: string, message: string, globalCallBackFuncName: string) => void;
-  signBotSignature: (appId: string, reloadPublicKey: boolean, method: string, path: string, body: string, callbackFunction: string) => void;
+  signBotSignature: (args: [string, boolean, string, string, string, string]) => void;
 }
 
 declare global {

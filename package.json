@@ -1,6 +1,6 @@
 {
   "name": "mixin-sdk-test",
-  "version": "6.1.2",
+  "version": "6.1.3",
   "license": "MIT",
   "description": "Mixin SDK for Node.js and Javascript",
   "main": "dist/index.js",
