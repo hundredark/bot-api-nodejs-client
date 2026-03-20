@@ -1,4 +1,12 @@
-const { MixinApi, encodeSafeTransaction, getUnspentOutputsForRecipients, buildSafeTransactionRecipient, buildSafeTransaction, signSafeTransaction } = require('..');
+const {
+  MixinApi,
+  encodeSafeTransaction,
+  getUnspentOutputsForRecipients,
+  buildSafeTransactionRecipient,
+  buildSafeTransaction,
+  signSafeTransaction,
+  decodeSafeTransaction,
+} = require('..');
 const { v4 } = require('uuid');
 const keystore = require('../keystore.json'); // keystore from your bot
 
@@ -26,23 +34,16 @@ const main = async () => {
   if (!change.isZero() && !change.isNegative()) {
     recipients.push(buildSafeTransactionRecipient(outputs[0].receivers, outputs[0].receivers_threshold, change.toString()));
   }
-  // get ghost key to send tx to uuid multisigs
-  // For Mixin Kernel Address start with 'XIN', get ghost key with getMainnetAddressGhostKey
-  const ghosts = await client.utxo.ghostKey(
-    recipients.map((r, i) => ({
-      hint: v4(),
-      receivers: r.members,
-      index: i,
-    })),
-  );
+  // get ghost key to send tx
+  const request_id = v4();
+  const ghosts = await client.utxo.ghostKey(recipients, request_id, safePrivateKey);
 
   // build safe transaction raw
-  const tx = buildSafeTransaction(utxos, recipients, ghosts, 'multisigs-test-memo');
+  const tx = buildSafeTransaction(utxos, recipients, ghosts, Buffer.from('multisigs-test-memo'));
   console.log(tx);
   const raw = encodeSafeTransaction(tx);
 
   // create multisig tx
-  const request_id = v4();
   console.log(request_id);
   let multisig = await client.multisig.createSafeMultisigs([
     {
@@ -60,8 +61,31 @@ const main = async () => {
   // you can continue to sign this unlocked multisig tx
   const index = outputs[0].receivers.sort().findIndex(u => u === keystore.client_id);
   // sign safe multisigs with the private key registerd to safe
-  const signedRaw = signSafeTransaction(tx, utxos, multisig[0].views, safePrivateKey, index);
+  const signedRaw = signSafeTransaction(tx, multisig[0].views, safePrivateKey, index);
   multisig = await client.multisig.signSafeMultisigs(request_id, signedRaw);
+  console.log(multisig);
+
+  // others in the gourp are required to sign the multisigs transaction
+  otherSign(multisig.request_id);
+};
+
+const otherSign = async id => {
+  const keystore = {
+    client_id: '',
+    session_id: '',
+    pin_token: '',
+    private_key: '',
+  };
+  const privateKey = '';
+
+  const client = MixinApi({ keystore });
+  let multisig = await client.multisig.fetchSafeMultisigs(id);
+  const tx = decodeSafeTransaction(multisig.raw_transaction);
+
+  const index = multisig.senders.sort().findIndex(u => u === keystore.client_id);
+  // sign safe multisigs with the private key registerd to safe
+  const signedRaw = signSafeTransaction(tx, multisig.views, privateKey, index);
+  multisig = await client.multisig.signSafeMultisigs(id, signedRaw);
   console.log(multisig);
 };
 

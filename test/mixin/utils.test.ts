@@ -1,9 +1,10 @@
 import { v4 as uuid } from 'uuid';
+import type { MixinInvoice } from '../../src/client/types/invoice';
 import { signAccessToken } from '../../src/client/utils/auth';
 import { base64RawURLEncode, base64RawURLDecode } from '../../src/client/utils/base64';
 import { hashMembers, uniqueConversationID } from '../../src/client/utils/uniq';
-import { sharedEd25519Key, signEd25519PIN } from '../../src/client/utils/pin';
-import { buildMixAddress, parseMixAddress } from '../../src/client/utils/address';
+import { buildMixAddress, getMainnetAddressFromSeed, parseMixAddress } from '../../src/client/utils/address';
+import { attachInvoiceEntry, getInvoiceString, MixinInvoiceVersion, newMixinInvoice, parseMixinInvoice } from '../../src/client/utils/invoice';
 import keystore from '../keystore';
 
 describe('Tests for utils', () => {
@@ -51,20 +52,6 @@ describe('Tests for utils', () => {
     expect(uniqueConversationID('d1e9ec7e-199d-4578-91a0-a69d9a7ba048', '965e5c6e-434c-3fa9-b780-c50f43cd955c')).toMatch('60478c27-1052-3df5-b938-b96a8b907e76');
   });
 
-  test('tests for encrypte pin', () => {
-    const privateBob: string = 'ecbda951581271c5fd644871e63149561291d88bfc4bcff2afe42d522b71d2df';
-    const pubBob: string = '27b190c953fca478ec2b8ec32d5181bd9e1b8c345662ff66f020a039e6376947';
-    const privateAlice: string = 'a340e8e294fae1cc3e3b3fb56633d21f6eefb5591ac62aa32bede494c36a3fb0';
-    const pubAlice: string = '4056be9513f09744aa3d8d5ded5a6e885dd054aff226e6b31a701504b031474b';
-
-    const share1 = sharedEd25519Key(Buffer.from(pubAlice, 'hex').toString('base64'), Buffer.from(privateBob, 'hex').toString('base64'));
-    const share2 = sharedEd25519Key(Buffer.from(pubBob, 'hex').toString('base64'), Buffer.from(privateAlice, 'hex').toString('base64'));
-    expect(Buffer.from(share1).toString('hex')).toBe(Buffer.from(share2).toString('hex'));
-
-    expect(signEd25519PIN('123456', undefined)).toBe('');
-    expect(signEd25519PIN('123456', keystore)).not.toBe('');
-  });
-
   test('tests for auth', () => {
     expect(signAccessToken('GET', '/me', '', uuid(), keystore)).not.toBe('');
     expect(signAccessToken('POST', '/me', { foo: 'bar' }, uuid(), keystore)).not.toBe('');
@@ -72,12 +59,12 @@ describe('Tests for utils', () => {
 
   test('tests for mix address', () => {
     let members = ['67a87828-18f5-46a1-b6cc-c72a97a77c43'];
-    let address = buildMixAddress({ members, threshold: 1 });
+    let address = buildMixAddress({ version: 2, uuidMembers: members, threshold: 1, xinMembers: [] });
     expect('MIX3QEeg1WkLrjvjxyMQf6Xc8dxs81tpPc').toBe(address);
 
     let ma = parseMixAddress('MIX3QEeg1WkLrjvjxyMQf6Xc8dxs81tpPc');
     expect(ma).not.toBe(undefined);
-    expect(ma!.members.join(',')).toBe(members.join(','));
+    expect(ma!.uuidMembers.join(',')).toBe(members.join(','));
     expect(ma!.threshold).toBe(1);
 
     members = [
@@ -89,7 +76,7 @@ describe('Tests for utils', () => {
       'c6d0c728-2624-429b-8e0d-d9d19b6592fa',
       '67a87828-18f5-46a1-b6cc-c72a97a77c43',
     ];
-    address = buildMixAddress({ members, threshold: 4 });
+    address = buildMixAddress({ version: 2, uuidMembers: members, threshold: 4, xinMembers: [] });
     expect(
       'MIX4fwusRK88p5GexHWddUQuYJbKMJTAuBvhudgahRXKndvaM8FdPHS2Hgeo7DQxNVoSkKSEDyZeD8TYBhiwiea9PvCzay1A9Vx1C2nugc4iAmhwLGGv4h3GnABeCXHTwWEto9wEe1MWB49jLzy3nuoM81tqE2XnLvUWv',
     ).toBe(address);
@@ -97,15 +84,15 @@ describe('Tests for utils', () => {
       'MIX4fwusRK88p5GexHWddUQuYJbKMJTAuBvhudgahRXKndvaM8FdPHS2Hgeo7DQxNVoSkKSEDyZeD8TYBhiwiea9PvCzay1A9Vx1C2nugc4iAmhwLGGv4h3GnABeCXHTwWEto9wEe1MWB49jLzy3nuoM81tqE2XnLvUWv',
     );
     expect(ma).not.toBe(undefined);
-    expect(ma!.members.join(',')).toBe(members.join(','));
+    expect(ma!.uuidMembers.join(',')).toBe(members.join(','));
     expect(ma!.threshold).toBe(4);
 
     members = ['XIN3BMNy9pQyj5XWDJtTbaBVE2zQ66zBo2weyc43iL286asdqwApWswAzQC5qba26fh3fzHK9iMoxyx1q3Lgj45KJftzGD9q'];
-    address = buildMixAddress({ members, threshold: 1 });
+    address = buildMixAddress({ version: 2, uuidMembers: [], threshold: 1, xinMembers: members });
     expect('MIXPYWwhjxKsbFRzAP2Dcb2mMjj7sQQo4MpCSv3NYaYCdQ2kEcbcimpPT81gaxtuNhunLWPx7Sv7fawjZ8DhRmEj8E2hrQM4Z6e').toBe(address);
     ma = parseMixAddress('MIXPYWwhjxKsbFRzAP2Dcb2mMjj7sQQo4MpCSv3NYaYCdQ2kEcbcimpPT81gaxtuNhunLWPx7Sv7fawjZ8DhRmEj8E2hrQM4Z6e');
     expect(ma).not.toBe(undefined);
-    expect(ma!.members.join(',')).toBe(members.join(','));
+    expect(ma!.xinMembers.join(',')).toBe(members.join(','));
     expect(ma!.threshold).toBe(1);
 
     members = [
@@ -113,7 +100,7 @@ describe('Tests for utils', () => {
       'XINMd9kCbxEoEetZuDM8gGJS11X3TVrRLwzhnqgMr65qjJBkCncNqSAngESpC7Hddnsw1D9Jo2QJakbFPr8WyrM6VkskGkB8',
       'XINLM7VuMYSjvKiEQPyLpaG7NDLDPngWWFBZpVJjhGamMsgPbmeSsGs3fQzNoqSr6syBTyLM3i69T7iSN8Tru7aQadiKLkSV',
     ];
-    address = buildMixAddress({ members, threshold: 2 });
+    address = buildMixAddress({ version: 2, uuidMembers: [], threshold: 2, xinMembers: members });
     expect(
       'MIXBCirWksVv9nuphqbtNRZZvwKsXHHMUnB5hVrVY1P7f4eBdLpDoLwiQoHYPvXia2wFepnX6hJwTjHybzBiroWVEMaFHeRFfLpcU244tzRM8smak9iRAD4PJRHN1MLHRWFtErottp9t7piaRVZBzsQXpSsaSgagj93voQdUuXhuQGZNj3Fme5YYMHfJBWjoRFHis4mnhBgxkyEGRUHAVYnfej2FhrypJmMDu74irRTdj2xjQYr6ovBJSUBYDBcvAyLPE3cEKc4JsPz7b9',
     ).toBe(address);
@@ -121,7 +108,77 @@ describe('Tests for utils', () => {
       'MIXBCirWksVv9nuphqbtNRZZvwKsXHHMUnB5hVrVY1P7f4eBdLpDoLwiQoHYPvXia2wFepnX6hJwTjHybzBiroWVEMaFHeRFfLpcU244tzRM8smak9iRAD4PJRHN1MLHRWFtErottp9t7piaRVZBzsQXpSsaSgagj93voQdUuXhuQGZNj3Fme5YYMHfJBWjoRFHis4mnhBgxkyEGRUHAVYnfej2FhrypJmMDu74irRTdj2xjQYr6ovBJSUBYDBcvAyLPE3cEKc4JsPz7b9',
     );
     expect(ma).not.toBe(undefined);
-    expect(ma!.members.join(',')).toBe(members.join(','));
+    expect(ma!.xinMembers.join(',')).toBe(members.join(','));
     expect(ma!.threshold).toBe(2);
+  });
+
+  test('tests for invoice', () => {
+    const BTC = 'c6d0c728-2624-429b-8e0d-d9d19b6592fa';
+    const ETH = '43d61dcd-e413-450d-80b8-101d5e903357';
+
+    const recipient =
+      'MIX4fwusRK88p5GexHWddUQuYJbKMJTAuBvhudgahRXKndvaM8FdPHS2Hgeo7DQxNVoSkKSEDyZeD8TYBhiwiea9PvCzay1A9Vx1C2nugc4iAmhwLGGv4h3GnABeCXHTwWEto9wEe1MWB49jLzy3nuoM81tqE2XnLvUWv';
+    let mi = newMixinInvoice(recipient);
+    expect(mi).not.toBeUndefined();
+
+    const trace1 = '772e6bef-3bff-4fcc-987d-29bafca74d63';
+    const amt1 = '0.12345678';
+    const ref1 = '7ecf9fc49ff4d2e36424b8e53e67aed8cc4e9d08d7cbdca7d8bdb153ed2fcdde';
+    attachInvoiceEntry(mi as MixinInvoice, {
+      trace_id: trace1,
+      asset_id: BTC,
+      amount: amt1,
+      extra: Buffer.from('extra one'),
+      index_references: [],
+      hash_references: [ref1],
+    });
+
+    const trace2 = '3552d116-b29d-4d72-9b24-3ca3b2e0f9c2';
+    const amt2 = '0.23345678';
+    const ref2 = '4a5f79c76872524c6a4a81b174338584e790f09fb059c39cf2a894de1b3c31c6';
+    attachInvoiceEntry(mi as MixinInvoice, {
+      trace_id: trace2,
+      asset_id: ETH,
+      amount: amt2,
+      extra: Buffer.from('extra two'),
+      index_references: [0],
+      hash_references: [ref2],
+    });
+
+    const str = getInvoiceString(mi as MixinInvoice);
+    expect(str).toEqual(
+      'MINAABzAgQHZ6h4KBj1RqG2zMcql6d8Q8lKyI9GcTl2tgoJBk8YEejG0McoJiRCm44N2dGbZZL6Z6h4KBj1RqG2zMcql6d8Q8lKyI9GcTl2tgoJBk8YEejG0McoJiRCm44N2dGbZZL6Z6h4KBj1RqG2zMcql6d8QwJ3LmvvO_9PzJh9Kbr8p01jxtDHKCYkQpuODdnRm2WS-gowLjEyMzQ1Njc4AAlleHRyYSBvbmUBAH7Pn8Sf9NLjZCS45T5nrtjMTp0I18vcp9i9sVPtL83eNVLRFrKdTXKbJDyjsuD5wkPWHc3kE0UNgLgQHV6QM1cKMC4yMzM0NTY3OAAJZXh0cmEgdHdvAgEAAEpfecdoclJMakqBsXQzhYTnkPCfsFnDnPKolN4bPDHGTTpvYA',
+    );
+
+    mi = parseMixinInvoice(str);
+    expect(mi).not.toBeUndefined();
+    mi = mi as MixinInvoice;
+    expect(mi.version).toEqual(MixinInvoiceVersion);
+    expect(buildMixAddress(mi.recipient)).toEqual(recipient);
+    expect(mi.entries).toHaveLength(2);
+
+    const e1 = mi.entries[0];
+    expect(e1.trace_id).toEqual(trace1);
+    expect(e1.asset_id).toEqual(BTC);
+    expect(e1.amount).toEqual(amt1);
+    expect(e1.extra).toEqual(Buffer.from('extra one'));
+    expect(e1.index_references).toHaveLength(0);
+    expect(e1.hash_references).toHaveLength(1);
+    expect(e1.hash_references[0]).toEqual(ref1);
+
+    const e2 = mi.entries[1];
+    expect(e2.trace_id).toEqual(trace2);
+    expect(e2.asset_id).toEqual(ETH);
+    expect(e2.amount).toEqual(amt2);
+    expect(e2.extra).toEqual(Buffer.from('extra two'));
+    expect(e2.index_references).toHaveLength(1);
+    expect(e2.index_references[0]).toEqual(0);
+    expect(e2.hash_references).toHaveLength(1);
+    expect(e2.hash_references[0]).toEqual(ref2);
+  });
+
+  test('tests for mainnet address', () => {
+    const addr = getMainnetAddressFromSeed(Buffer.alloc(64).fill(1));
+    expect(addr).toEqual('XINSwYaJPnKiwBWqXm4i3e3My9GKguReMRyB1sRSexeHcQ7V66RWsicAiR2dokcQ5kiJsfY5QbEjTcqRQRCxkEyENBaz4AeB');
   });
 });

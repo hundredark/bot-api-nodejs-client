@@ -4,7 +4,7 @@ export const WebViewApi = () => {
   const getMixinContext = () => {
     let ctx: Context = {};
     if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.MixinContext) {
-      const contextString = prompt('MixinContext.getContext()'); // eslint-disable-line no-alert
+      const contextString = prompt('MixinContext.getContext()');
       if (contextString) {
         ctx = JSON.parse(contextString);
         ctx.platform = ctx.platform || 'iOS';
@@ -119,24 +119,6 @@ export const WebViewApi = () => {
           if (window.MixinContext && typeof window.MixinContext.tipSign === 'function') {
             window.tipSignCallbackFunction = cb;
             await window.MixinContext.tipSign(chainId, msg, 'tipSignCallbackFunction');
-          }
-          break;
-        default:
-          break;
-      }
-    },
-
-    signBotSignature: (appId: string, reloadPublicKey: boolean, method: string, path: string, body: string, callbackFunction: string) => {
-      switch (getMixinContext().platform) {
-        case 'iOS':
-          if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.signBotSignature) {
-            window.webkit.messageHandlers.signBotSignature.postMessage([appId, reloadPublicKey, method, path, body, callbackFunction]);
-          }
-          break;
-        case 'Android':
-        case 'Desktop':
-          if (window.MixinContext && typeof window.MixinContext.signBotSignature === 'function') {
-            window.MixinContext.signBotSignature([appId, reloadPublicKey, method, path, body, callbackFunction]);
           }
           break;
         default:

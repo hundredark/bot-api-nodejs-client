@@ -1,4 +1,3 @@
-import merge from 'lodash.merge';
 import type { AxiosInstance } from 'axios';
 import type Keystore from './types/keystore';
 import type { HTTPConfig, RequestClient } from './types';
@@ -20,15 +19,13 @@ import { PaymentBaseClient } from './payment';
 import { PinKeystoreClient } from './pin';
 import { TransferKeystoreClient } from './transfer';
 import { UserKeystoreClient } from './user';
-import { BlazeKeystoreClient } from '../blaze/client';
 import { UtxoKeystoreClient } from './utxo';
 import { SafeKeystoreClient } from './safe';
 
-const KeystoreClient = (axiosInstance: AxiosInstance, keystore: Keystore | undefined, config: HTTPConfig) => ({
+const KeystoreClient = (axiosInstance: AxiosInstance, keystore: Keystore | undefined, _: HTTPConfig) => ({
   address: AddressKeystoreClient(axiosInstance, keystore),
   app: AppKeystoreClient(axiosInstance, keystore),
   asset: AssetKeystoreClient(axiosInstance),
-  blaze: BlazeKeystoreClient(keystore, config.blazeOptions),
   attachment: AttachmentKeystoreClient(axiosInstance),
   circle: CircleKeystoreClient(axiosInstance),
   code: CodeKeystoreClient(axiosInstance),
@@ -57,5 +54,5 @@ export function MixinApi(config: HTTPConfig = {}): KeystoreClientReturnType & Re
 
   const keystoreClient = KeystoreClient(axiosInstance, keystore, config);
 
-  return merge(keystoreClient, requestClient);
+  return { ...keystoreClient, ...requestClient };
 }

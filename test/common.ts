@@ -11,4 +11,6 @@ const config = {
 };
 const client = MixinApi(config);
 
-export { client, keystore };
+const app_pin = '9b1b3b1006de4881a6f3c1a8da462444dc3950c76b42d3579a88d4d68bae74be';
+
+export { client, keystore, app_pin };

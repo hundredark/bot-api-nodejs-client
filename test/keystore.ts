@@ -1,11 +1,8 @@
 const keystore = {
-  user_id: '7a522ae4-841b-357b-a7b1-4f5f51488b8f',
-  session_id: '9e8ba070-0e63-4488-89a2-f82c12bbd196',
-  private_key: 'UVXRC3f4sWyFMFq2BmutrYWskXJFy6vmkXY_61weQ1VQl_H_oUba4BRh9nDv8BwlovfqmytE6Q8GEaPgEc09YQ',
-  pin: '291843',
-  pin_token: 'dRSDk0j2tkDF1hJak3MmSGYNEWPE5928IqvXTcIT3Uo',
-  client_secret: '',
-  scope: 'FULL',
+  app_id: '4b79fe76-0d9d-49e6-85fd-0f6be01147da',
+  session_id: 'a03a4496-3e59-4abd-bd1e-1ab8a2acb550',
+  server_public_key: '413506980af07695d590bae4b58bafac9f381ab8c6ef02bef85fab3bee21de26',
+  session_private_key: 'c838d99617cb2543bc6b7eb4ac0a1daede5d132ed1c5442fbbcad8baaf556748',
 };
 
 export default keystore;

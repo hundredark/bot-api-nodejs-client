@@ -30,12 +30,10 @@ yarn add @mixin.dev/mixin-node-sdk
 const { MixinApi } = require('@mixin.dev/mixin-node-sdk');
 
 const keystore = {
-  user_id: '',
-  private_key: '',
+  app_id: '',
   session_id: '',
-  pin: '',
-  pin_token: '',
-  client_secret: '',
+  server_public_key: '',
+  session_private_key: '',
 };
 const client = MixinApi({ keystore });
 
@@ -51,36 +49,81 @@ async function getMe() {
 2. Receive Mixin Messenger messages
 
 ```js
-const { MixinApi } = require('@mixin.dev/mixin-node-sdk');
+const { BlazeKeystoreClient } = require('@mixin.dev/mixin-node-sdk/blaze');
 
 const keystore = {
-  user_id: '',
-  private_key: '',
+  app_id: '',
   session_id: '',
-  pin: '',
-  pin_token: '',
-  client_secret: '',
+  server_public_key: '',
+  session_private_key: '',
 };
-const config = {
-  keystore,
-  blazeOptions: {
-    parse: true,
-    syncAck: true,
-  },
+const config = blazeOptions: {
+  parse: true,
+  syncAck: true,
 };
 
-const client = MixinApi(config);
-client.blaze.loop({
+const client = BlazeKeystoreClient(keystore, config);
+client.loop({
   onMessage(msg) {
     console.log(msg);
   },
 });
 ```
 
+3. OAuth
+
+```js
+const { MixinApi, getED25519KeyPair, base64RawURLEncode } = require('@mixin.dev/mixin-node-sdk');
+
+const code = ''; // from OAuth url
+const app_id = ''; // app_id of your bot
+const client_secret = ''; // OAuth Client Secret of your bot
+
+const { seed, publicKey } = getED25519KeyPair(); // Generate random seed and ed25519 key pairs
+
+let client = MixinApi();
+const { scope, authorization_id } = await client.oauth.getToken({
+  client_id: app_id,
+  code,
+  ed25519: base64RawURLEncode(publicKey),
+  client_secret,
+});
+const keystore = {
+  app_id,
+  scope,
+  authorization_id,
+  session_private_key: Buffer.from(seed).toString('hex'),
+};
+client = MixinApi({ keystore });
+const user = await client.user.profile();
+```
+
+## Use the sdk in web browser
+
+This SDK uses node `Buffer`, which is not available in web browser. You can use polyfills to make it work.
+
+For example, you can use `vite-plugin-node-polyfills` for vite.
+
+```js
+// vite.config.js
+import { nodePolyfills } from 'vite-plugin-node-polyfills';
+// ...
+export default defineConfig({
+  // ...
+  plugins: [
+    nodePolyfills({
+      globals: {
+        Buffer: true,
+      },
+    }),
+  ],
+});
+```
+
 ## License
 
 ```
-Copyright 2022 Mixin.
+Copyright 2024 Mixin.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

@@ -1,13 +1,11 @@
 const { MixinApi } = require('..');
+const mb = require('../dist/blaze');
 const keystore = require('../keystore.json'); // keystore from your bot
 
-keystore.user_id = keystore.client_id;
-const client = MixinApi({
-  keystore,
-  blazeOptions: {
-    parse: true, // parse the message content by sdk
-    syncAck: true, // automatically send read status after receiving message
-  },
+const client = MixinApi({ keystore });
+const blaze = mb.BlazeKeystoreClient(keystore, {
+  parse: true, // parse the message content by sdk
+  syncAck: true, // automatically send read status after receiving message
 });
 
 const handler = {
@@ -42,4 +40,4 @@ const handler = {
   },
 };
 // ws will auto reconnect after connect closing
-client.blaze.loop(handler);
+blaze.loop(handler);
